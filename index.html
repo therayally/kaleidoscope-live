@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Kaleidoscope Live</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #000; font-family: ui-monospace, monospace; color: #ddd; }
+  canvas { position: fixed; display: block; width: 100vw; height: 100vh; }
+
+  /* Top bar */
+  #topbar {
+    position: fixed; top: 12px; left: 12px; z-index: 10;
+    padding: 8px 14px;
+    background: rgba(0,0,0,0.7); backdrop-filter: blur(8px);
+    border: 1px solid rgba(255,255,255,0.2); border-radius: 8px;
+    color: #fff; font: 11px ui-monospace, monospace;
+    display: flex; gap: 8px; align-items: center;
+  }
+  #topbar button {
+    background: none; border: 1px solid rgba(255,255,255,0.3);
+    color: #fff; padding: 4px 10px; border-radius: 4px; cursor: pointer;
+    font: 11px ui-monospace;
+  }
+  #topbar button:hover { background: rgba(255,255,255,0.1); }
+  #topbar button.active { background: #2bd17e; color: #04140c; border-color: #2bd17e; }
+
+  #audioInfo {
+    position: fixed; bottom: 12px; left: 12px; z-index: 10;
+    padding: 8px 14px;
+    background: rgba(0,0,0,0.7); backdrop-filter: blur(8px);
+    border: 1px solid rgba(255,255,255,0.2); border-radius: 8px;
+    color: #aaa; font: 10px ui-monospace, monospace;
+  }
+
+  /* Admin panel - hidden by default for OBS / streaming */
+  #admin {
+    position: fixed; top: 0; right: 0; bottom: 0; width: 340px;
+    background: rgba(0,0,0,0.88); backdrop-filter: blur(12px);
+    border-left: 1px solid rgba(255,255,255,0.15);
+    color: #eee; font: 11px ui-monospace, monospace;
+    overflow-y: auto; padding: 14px; z-index: 50;
+    display: none;
+  }
+  body.admin #admin { display: block; }
+  body.admin canvas { width: calc(100vw - 340px); }
+
+  #admin h1 { font-size: 13px; margin: 0 0 14px 0; letter-spacing: 0.08em; text-transform: uppercase; }
+  #admin .group { margin-bottom: 14px; padding-bottom: 12px; border-bottom: 1px solid rgba(255,255,255,0.08); }
+  #admin .group:last-child { border-bottom: none; }
+  #admin label { display: block; font-size: 10px; opacity: 0.7; margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.05em; }
+  #admin input[type=range] { width: 100%; margin: 4px 0 8px 0; accent-color: #2bd17e; }
+  #admin select { background: #1a0e25; color: #eee; border: 1px solid #444; border-radius: 4px; padding: 4px 6px; font: 11px ui-monospace; width: 100%; }
+  #admin input[type=color] { width: 32px; height: 22px; padding: 0; border: 1px solid #444; border-radius: 3px; vertical-align: middle; margin-left: 6px; cursor: pointer; }
+  #admin .row { display: flex; gap: 6px; align-items: center; }
+  #admin .val { font-size: 10px; opacity: 0.7; min-width: 32px; text-align: right; }
+  #admin .close {
+    position: absolute; top: 8px; right: 12px;
+    background: none; border: none; color: #aaa; font-size: 18px; cursor: pointer;
+  }
+  #admin .close:hover { color: #fff; }
+</style>
+</head>
+<body>
+
+<canvas id="gl"></canvas>
+
+<div id="topbar">
+  <button id="audioBtn">🎤 Audio</button>
+  <button id="hideTopbar">⤬</button>
+  <button id="adminToggle">⚙</button>
+</div>
+
+<div id="audioInfo">Audio: idle</div>
+
+<div id="admin">
+  <button class="close" onclick="window.location.href=window.location.pathname">×</button>
+  <h1>Kaleidoscope · Controls</h1>
+
+  <div class="group">
+    <label>Segments <span class="val" id="vSegments">6</span></label>
+    <input type="range" id="segments" min="3" max="12" value="6" step="1" />
+    <label>Fold Symmetry</label>
+    <select id="symmetry">
+      <option value="0">Radial</option>
+      <option value="6">Hexagonal</option>
+      <option value="4">Rectangular</option>
+      <option value="2">Diagonal</option>
+    </select>
+    <label>Mirror Mode</label>
+    <select id="mirrorMode">
+      <option value="0">Orb</option>
+      <option value="1">Rings</option>
+      <option value="2">Strand</option>
+      <option value="3">Cell</option>
+    </select>
+  </div>
+
+  <div class="group">
+    <label>Movement (zoom speed) <span class="val" id="vMovement">0.30</span></label>
+    <input type="range" id="movement" min="-1.5" max="1.5" value="0.30" step="0.05" />
+    <label>Spiral Twist <span class="val" id="vTwist">0.40</span></label>
+    <input type="range" id="twist" min="0" max="3" value="0.40" step="0.05" />
+    <label>Warp Amplitude <span class="val" id="vWarp">0.12</span></label>
+    <input type="range" id="warp" min="0" max="0.5" value="0.12" step="0.01" />
+    <label>Warp Frequency <span class="val" id="vWarpFreq">1.20</span></label>
+    <input type="range" id="warpFreq" min="0" max="5" value="1.20" step="0.1" />
+    <label>Hue Cycle <span class="val" id="vHue">0.15</span></label>
+    <input type="range" id="hue" min="0" max="2" value="0.15" step="0.05" />
+    <label>Saturation <span class="val" id="vSat">1.5</span></label>
+    <input type="range" id="sat" min="0" max="3" value="1.5" step="0.1" />
+  </div>
+
+  <div class="group">
+    <label>Audio Reactivity</label>
+    <label>Bass Boost <span class="val" id="vBass">2.0</span></label>
+    <input type="range" id="bass" min="0" max="5" value="2.0" step="0.1" />
+    <label>Treble Boost <span class="val" id="vTreble">1.5</span></label>
+    <input type="range" id="treble" min="0" max="5" value="1.5" step="0.1" />
+  </div>
+
+  <div class="group">
+    <label>Source</label>
+    <select id="source">
+      <option value="noise">Procedural Noise</option>
+      <option value="mic">Live Microphone (audio reactive)</option>
+    </select>
+  </div>
+</div>
+
+<script type="module" src="./src/main.js"></script>
+</body>
+</html>
